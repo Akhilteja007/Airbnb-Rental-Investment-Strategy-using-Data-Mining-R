@@ -1,0 +1,442 @@
+---
+title: "data mining project report"
+---
+
+```{r global_options, include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+
+```{r,echo=FALSE}
+options( java.parameters = "-Xmx6g")
+
+library(dplyr)
+library(tidyr)
+
+# Create example data frame
+
+library(caret)
+
+library('tidyverse')
+library('tidymodels')
+library('plotly')
+library('skimr')
+library(ggplot2)
+library(mlr)
+library(xgboost)
+#pkgs <- c("factoextra",  "NbClust")
+#install.packages(pkgs)
+library('factoextra')
+library('NbClust')
+#install.packages('leaflet')
+library('leaflet')
+library('rgdal')
+#install.packages('tigris')
+library('tigris')
+#install.packages('httr')
+library('httr')
+#install.packages('sp')
+library('sp')
+#install.packages('webshot')
+library('webshot')
+
+f = file.choose()
+completeData<-read.csv(f)
+completeData<-completeData %>% 
+  filter(substr(completeData$X.randomControl.,1,3)==116)
+
+#completeData<-completeData[,-c(1,39,250)]
+
+
+colsToFactor <- c('bed_type','cancellation_policy','room_type','host_has_profile_pic','host_identity_verified','host_is_superhost','instant_bookable','is_location_exact','require_guest_phone_verification','require_guest_profile_picture','requires_license','review_scores_accuracy','review_scores_checkin','review_scores_cleanliness','review_scores_communication','review_scores_location','review_scores_value')
+completeData <- completeData %>%
+  mutate_at(colsToFactor, ~factor(.))
+
+
+#completeData$high_booking_rate<-as.factor(completeData$high_booking_rate)
+#colnames(completeData)
+
+colsToFactor<-c(43:245)
+completeData <- completeData %>%
+  mutate_at(colsToFactor, ~factor(.))
+#completeData<-completeData[,-96]
+
+
+
+gc()
+
+
+
+#completeData$high_booking_rate<-as.factor(completeData$high_booking_rate)
+#levels(completeData$high_booking_rate) <- c("No", "Yes")
+
+
+gc()
+
+#completeData<-completeData %>% filter(market=='New York')
+
+set.seed(1234)
+
+library(data.table)
+
+library(Matrix)
+
+
+
+myvars <- c("high_booking_rate", "host_is_superhost","amenities_.Self.check.in.","host_response_time",
+            "amenities_.Hot.water.","amenities_.Free.street.parking.","amenities_.Dishes.and.silverware.","amenities_Refrigerator","amenities_.Coffee.maker.","host_listings_count","amenities_Microwave","cancellation_policy","availability_90","availability_60","availability_30","availability_365","amenities_.Extra.pillows.and.blankets.","longitude","amenities_.Cooking.basics.","amenities_.Luggage.dropoff.allowed.","latitude","amenities_.Bed.linens.","amenities_.Hair.dryer.","amenities_Keypad","minimum_nights","extra_people","cleaning_fee","amenities_.Family.kid.friendly.","guests_included","price","property_type","amenities_Shampoo","amenities_Stove","amenities_Iron","amenities_.translation.missing..en.hosting_amenity_50.","review_scores_value","amenities_.Long.term.stays.allowed.","price_score","amenities_.24.hour.check.in.","host_response_rate","amenities_Hangers","amenities_.Garden.or.backyard.","amenities_Oven","amenities_.Fire.extinguisher.","amenities_Gym","amenities_.Laptop.friendly.workspace.","amenities_Elevator","maximum_nights","amenities_.Patio.or.balcony.","review_scores_accuracy","review_scores_checkin","amenities_Lockbox","host_verifications","amenities_.First.aid.kit.","amenities_.Carbon.monoxide.detector.","security_deposit","amenities_Internet","review_scores_communication","amenities_.Single.level.home.","amenities_Pool","amenities_Essentials","amenities_.Pets.live.on.this.property.","amenities_.Bedroom.comforts.","amenities_.Bathroom.essentials.","amenities_.Toilet.paper.","amenities_.Well.lit.path.to.entrance.","amenities_Dog.s.","amenities_.Bath.towel.","amenities_.Smoke.detector.","bathrooms","accommodates","review_scores_location","amenities_Wifi","review_scores_value","review_scores_cleanliness","host_identity_verified","is_location_exact","requires_license","require_guest_profile_picture","amenities","host_sinceD","amenities_.Pack..n.Play.travel.crib.","amenities_.No.stairs.or.steps.to.enter.","amenities_.Body.soap.","amenities_.Room.darkening.shades.","amenities_.Safety.card.","amenities_Bathtub","amenities_.Children.s.books.and.toys.","amenities_Heating","amenities_.Hot.tub.","amenities_.Wide.entrance.for.guests.","amenities_Dishwasher","amenities_.Extra.space.around.bed.","amenities_Cat.s.","amenities_Netflix","amenities_.Cable.TV.","amenities_.Luggage.dropoff.allowed.","amenities_.Smart.TV.","market","amenities_Internet","bedrooms","amenities_Printer","amenities_.Disabled.parking.spot.","amenities_.Mini.fridge.","amenities_.Gas.oven.","amenities_.24.hour.check.in.","amenities_.Full.kitchen.","amenities_Washer","amenities_Other","instant_bookable","amenities_.Formal.dining.area.","room_type","review_scores_ratingOG")
+
+completeData <- completeData[myvars]
+
+library(dummies)
+
+completeData2 <- dummy.data.frame(completeData, sep = ".")
+
+#levels(completeData$host_is_superhost) <- c(0,1,2)
+#target<-completeData2$high_booking_rate
+
+dffTrain <- completeData2%>% sample_frac(0.7)
+target<-dffTrain$high_booking_rate
+dffTest <- dplyr::setdiff(completeData2, dffTrain) 
+
+trainMatrix <- data.matrix(dffTrain[-1])
+testMatrix <- data.matrix(dffTest[-1])
+trainMatrix<-scale(trainMatrix)
+testMatrix<-scale(testMatrix)
+
+#dim(dffTrain)
+
+param <- list("objective" = "binary:logistic",scoring='auc')
+
+
+nround = 195            #this number is the number of trees when test mlogloss is minimum during cross-validation
+bst = xgboost(data = trainMatrix, label = target, param=param, nrounds = nround)
+
+#predict the model
+
+ypred = predict(bst, testMatrix)
+
+pred <-  as.numeric(ypred > 0.30)
+CM_Validation <- confusionMatrix(as.factor(pred),as.factor(dffTest$high_booking_rate))
+CM_Validation
+
+
+importance <- xgb.importance(feature_names = colnames(completeData2[-1]), model = bst)
+importance
+
+
+
+```
+
+```{r}
+importance
+
+CM_Validation
+```
+
+
+We have used Xgboost as our model for predicting booking rate for the market of new york. Model has accuracy of 87.93 for the threshold that we have kept as 0.25 with high sensitivity of 0.8918 and specificity of 0.8321. Since our first business proposal is for investors looking for new acquisition of property we want to present them with as many correct options as possible.Thus we have kept the threshold of our model at 0.25 in order to increase the specificity and maintain trade off between accuracy, specificity and sensitivity. Even though this impacts the sensitivity and accuracy by a small margin it is not significant and for our business proposal this threshold is more appropriate.
+
+### New properties added in New York over time
+
+
+airbnbTrain.csv
+
+```{r}
+f1 = file.choose()
+Data <- read_csv(f1)
+```
+
+
+```{r,echo=FALSE}
+library("dplyr")
+
+NyData1 <- Data %>% 
+  filter(substr(Data$`{randomControl}`, 1,3) == 116)
+
+```
+
+```{r,echo=FALSE}
+NyData1$host_since = as.Date(NyData1$host_since, "%m/%d/%Y")
+NyData1$host_since = as.factor(format(NyData1$host_since, "%Y"))
+```
+
+```{r,echo=FALSE}
+plot1 <- ggplot(data = NyData1) + 
+  geom_histogram(aes(host_since), stat = "count", fill = 'red',alpha = 0.85) + 
+  theme_minimal(base_size=13)+xlab("")+ylab("") + 
+  ggtitle("The Number of New Property in New York")
+
+plot1
+```
+
+
+
+
+
+```{r,echo=FALSE}
+f2 = file.choose()
+completeData<-read.csv(f2)
+
+completeData<-completeData %>% filter(substr(completeData$X.randomControl., 1,3) == 116)
+
+f3 = file.choose()
+ny_zipcodes_geom <- readOGR(f3, verbose = F)
+
+completeData_visual <- completeData
+completeData_visual_spdf <- completeData_visual
+coordinates(completeData_visual_spdf) <- ~longitude + latitude
+proj4string(completeData_visual_spdf) <- proj4string(ny_zipcodes_geom)
+matches <- over(completeData_visual_spdf, ny_zipcodes_geom)
+completeData_visual <- cbind(completeData_visual, matches)
+completeData_visual <- completeData_visual %>% mutate(zcta = fct_explicit_na(zcta))
+
+completeData_visual_summary <- completeData_visual %>% group_by(zcta) %>% summarise(avg_booking_rate = mean(high_booking_rate), avg_location_score = mean(review_scores_location), avg_price = mean(price))
+
+map_data <- geo_join(ny_zipcodes_geom, completeData_visual_summary, "zcta", "zcta")
+
+popup_location <- paste0("Zipcode: ", as.character(map_data$zcta), " Location_Score: ", as.character(map_data$avg_location_score))
+popup_booking <- paste0("Zipcode: ", as.character(map_data$zcta), " Booking_Rate: ", as.character(map_data$avg_booking_rate))
+popup_price <- paste0("Zipcode: ", as.character(map_data$zcta), " Price: ", as.character(map_data$avg_price))
+pal_location <- colorNumeric (palette = c("red", "green", "blue"), domain = map_data$avg_location_score)
+pal_booking <- colorNumeric (palette = c("red", "green", "blue"), domain = map_data$avg_booking_rate)
+pal_price <- colorNumeric (palette = c("yellow", "green", "blue"), domain = map_data$avg_price)
+
+```
+
+
+
+```{r,echo=FALSE}
+leaflet(map_data) %>%
+addTiles() %>%
+addPolygons(fillColor = ~pal_location(avg_location_score), fillOpacity = 0.7, weight = 0.7, color = "#b2aeae", popup = popup_location) %>% addProviderTiles("CartoDB.Positron") %>% setView(-73.98, 40.75, zoom = 11) %>% addLegend(pal = pal_location, values = map_data$avg_location_score, position = "bottomright", title = "Average Location Score")
+```
+
+
+
+```{r,echo=FALSE}
+
+leaflet(map_data) %>%
+addTiles() %>%
+addPolygons(fillColor = ~pal_booking(avg_booking_rate), fillOpacity = 0.7, weight = 0.7, color = "#b2aeae", popup = popup_booking) %>% addProviderTiles("CartoDB.Positron") %>% setView(-73.98, 40.75, zoom = 11) %>% addLegend(pal = pal_booking, values = map_data$avg_booking_rate, position = "bottomright", title = "Average Booking Rate")
+
+```
+
+
+
+```{r,echo=FALSE}
+leaflet(map_data) %>%
+addTiles() %>%
+addPolygons(fillColor = ~pal_price(avg_price), fillOpacity = 0.7, weight = 0.7, color = "#b2aeae", popup = popup_price) %>% addProviderTiles("CartoDB.Positron") %>% setView(-73.98, 40.75, zoom = 11) %>% addLegend(pal = pal_price, values = map_data$avg_price, position = "bottomright", title = "Average Price")
+```
+
+
+
+```{r,echo=FALSE}
+f5 = file.choose()
+dataPlot <- read_csv(f5)
+dataplot<-na.omit(dataPlot,cols='host_is_superhost')
+dataNySuperHost <- dataPlot %>% 
+  select(host_is_superhost, host_response_rate, review_scores_rating)
+plot9 <- dataNySuperHost %>% 
+  ggplot(aes(x = host_response_rate, y = review_scores_rating, color = host_is_superhost)) + geom_point()
+
+plot9+  theme(
+  axis.text.x = element_blank())
+
+
+```
+
+
+
+```{r,echo=FALSE}
+f4 = file.choose()
+completeData<-read.csv(f4)
+completeData<-completeData %>% 
+  filter(substr(completeData$X.randomControl.,1,3)==116)
+
+#colnames(completeData)
+#completeData<-completeData[,-c(1,39,250)]
+
+
+colsToFactor <- c('bed_type','cancellation_policy','room_type','host_has_profile_pic','host_identity_verified','host_is_superhost','instant_bookable','is_location_exact','require_guest_phone_verification','require_guest_profile_picture','requires_license','review_scores_accuracy','review_scores_checkin','review_scores_cleanliness','review_scores_communication','review_scores_location','review_scores_value')
+completeData <- completeData %>%
+  mutate_at(colsToFactor, ~factor(.))
+
+
+#completeData$high_booking_rate<-as.factor(completeData$high_booking_rate)
+colnames(completeData)
+
+colsToFactor<-c(43:245)
+completeData <- completeData %>%
+  mutate_at(colsToFactor, ~factor(.))
+#completeData<-completeData[,-96]
+
+
+
+gc()
+
+
+
+#completeData$high_booking_rate<-as.factor(completeData$high_booking_rate)
+#levels(completeData$high_booking_rate) <- c("No", "Yes")
+
+
+gc()
+
+#completeData<-completeData %>% filter(market=='New York')
+
+set.seed(1234)
+
+library(data.table)
+
+library(Matrix)
+
+
+
+myvars <- c("high_booking_rate", "host_is_superhost","amenities_.Self.check.in.","host_response_time",
+            "amenities_.Hot.water.","amenities_.Free.street.parking.","amenities_.Dishes.and.silverware.","amenities_Refrigerator","amenities_.Coffee.maker.","host_listings_count","amenities_Microwave","cancellation_policy","availability_90","availability_60","availability_30","availability_365","amenities_.Extra.pillows.and.blankets.","longitude","amenities_.Cooking.basics.","amenities_.Luggage.dropoff.allowed.","latitude","amenities_.Bed.linens.","amenities_.Hair.dryer.","amenities_Keypad","minimum_nights","extra_people","cleaning_fee","amenities_.Family.kid.friendly.","guests_included","price","property_type","amenities_Shampoo","amenities_Stove","amenities_Iron","amenities_.translation.missing..en.hosting_amenity_50.","review_scores_value","amenities_.Long.term.stays.allowed.","price_score","amenities_.24.hour.check.in.","host_response_rate","amenities_Hangers","amenities_.Garden.or.backyard.","amenities_Oven","amenities_.Fire.extinguisher.","amenities_Gym","amenities_.Laptop.friendly.workspace.","amenities_Elevator","maximum_nights","amenities_.Patio.or.balcony.","review_scores_accuracy","review_scores_checkin","amenities_Lockbox","host_verifications","amenities_.First.aid.kit.","amenities_.Carbon.monoxide.detector.","security_deposit","amenities_Internet","review_scores_communication","amenities_.Single.level.home.","amenities_Pool","amenities_Essentials","amenities_.Pets.live.on.this.property.","amenities_.Bedroom.comforts.","amenities_.Bathroom.essentials.","amenities_.Toilet.paper.","amenities_.Well.lit.path.to.entrance.","amenities_Dog.s.","amenities_.Bath.towel.","amenities_.Smoke.detector.","bathrooms","accommodates","review_scores_location","amenities_Wifi","review_scores_value","review_scores_cleanliness","host_identity_verified","is_location_exact","requires_license","require_guest_profile_picture","amenities","host_sinceD","amenities_.Pack..n.Play.travel.crib.","amenities_.No.stairs.or.steps.to.enter.","amenities_.Body.soap.","amenities_.Room.darkening.shades.","amenities_.Safety.card.","amenities_Bathtub","amenities_.Children.s.books.and.toys.","amenities_Heating","amenities_.Hot.tub.","amenities_.Wide.entrance.for.guests.","amenities_Dishwasher","amenities_.Extra.space.around.bed.","amenities_Cat.s.","amenities_Netflix","amenities_.Cable.TV.","amenities_.Luggage.dropoff.allowed.","amenities_.Smart.TV.","market","amenities_Internet","bedrooms","amenities_Printer","amenities_.Disabled.parking.spot.","amenities_.Mini.fridge.","amenities_.Gas.oven.","amenities_.24.hour.check.in.","amenities_.Full.kitchen.","amenities_Washer","amenities_Other","instant_bookable","amenities_.Formal.dining.area.","room_type","review_scores_ratingOG")
+
+completeData <- completeData[myvars]
+
+library(dummies)
+
+completeData2 <- dummy.data.frame(completeData[-2], sep = ".")
+
+levels(completeData$host_is_superhost) <- c(0,1,2)
+target<-completeData$host_is_superhost
+
+
+trainMatrix <- data.matrix(completeData2[-1])
+#testMatrix <- data.matrix(dffTest[-1])
+trainMatrix<-scale(trainMatrix)
+#testMatrix<-scale(testMatrix)
+
+#dim(dffTrain)
+
+param <- list("objective" = "multi:softprob",scoring='auc',"num_class"=4)
+
+
+nround = 195            #this number is the number of trees when test mlogloss is minimum during cross-validation
+bst = xgboost(data = trainMatrix, label = target, param=param, nrounds = nround)
+
+#predict the model
+
+#ypred = predict(bst, testMatrix)
+
+#pred <-  as.numeric(ypred > 0.5)
+#CM_Validation <- confusionMatrix(as.factor(pred),as.factor(dffTest$high_booking_rate))
+#CM_Validation
+
+
+importance <- xgb.importance(feature_names = colnames(completeData2[-1]), model = bst)
+importance
+```
+
+```{r}
+##This is a table of all the features in the data and their importance gain towards deciding host status from the model of XGboost.
+importance
+```
+
+
+
+
+```{r,echo=FALSE}
+library(ggplot2)
+importance2 <- within(importance, Feature[Gain<0.025] <- 'Other')
+importance2<-importance2 %>% 
+  mutate(importance=Gain/sum(Gain)*100)
+summed<-sum(importance2[11:132,5])
+library(tidyverse)
+importance2<-importance2 %>% add_row(Feature = "Other", importance = summed)
+importance2<-importance2[c(1:10,133),]
+
+
+# Barplot
+bp<- ggplot(importance2, aes(x="", y=importance, fill=Feature))+
+geom_bar(width = 1, stat = "identity")
+#bp
+
+pie <- bp + coord_polar("y", start=0)
+#pie
+
+
+
+blank_theme <- theme_minimal()+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold")
+  )
+library(scales)
+pie + geom_text(aes(label = paste0(round(importance2$importance))), position = position_stack(vjust = 0.5))
+
+```
+
+
+
+```{r,echo=FALSE}
+
+completeData3 <- dummy.data.frame(completeData, sep = ".")
+
+#levels(completeData$host_is_superhost) <- c(0,1,2)
+target<-completeData$high_booking_rate
+
+
+trainMatrix <- data.matrix(completeData3[-1])
+#testMatrix <- data.matrix(dffTest[-1])
+trainMatrix<-scale(trainMatrix)
+#testMatrix<-scale(testMatrix)
+
+#dim(dffTrain)
+
+param <- list("objective" = "binary:logistic",scoring='auc')
+
+
+nround = 195            #this number is the number of trees when test mlogloss is minimum during cross-validation
+bst = xgboost(data = trainMatrix, label = target, param=param, nrounds = nround)
+
+#predict the model
+
+#ypred = predict(bst, testMatrix)
+
+#pred <-  as.numeric(ypred > 0.5)
+#CM_Validation <- confusionMatrix(as.factor(pred),as.factor(dffTest$high_booking_rate))
+#CM_Validation
+
+
+importance <- xgb.importance(feature_names = colnames(completeData3[-1]), model = bst)
+importance<-importance %>% filter(str_detect(Feature, "amenities_"))
+
+
+importance2 <- within(importance, Feature[Gain<0.0035] <- 'Other')
+importance2<-importance2 %>% 
+  mutate(importance=Gain/sum(Gain)*100)
+importance2<-importance2[-2,]
+summed<-sum(importance2[8:55,5])
+library(tidyverse)
+importance2<-importance2 %>% add_row(Feature = "Other", importance = summed)
+importance2<-importance2[c(1:7,56),]
+
+
+# Barplot
+bp<- ggplot(importance2, aes(x="", y=importance, fill=Feature))+
+geom_bar(width = 1, stat = "identity")
+
+
+
+
+```
+```{r}
+bp
+
+```
+ 
+ 
+
+
